@@ -1,0 +1,1101 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام مسابقات التوقعات الرياضية</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts - Tajawal -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+    
+    <!-- لودر مكتبات Firebase (التوافقية السهلة لملفات الـ Single Page) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: #f3f4f6;
+        }
+        .active-tab {
+            border-bottom: 3px solid #1e40af;
+            color: #1e40af;
+            font-weight: 700;
+        }
+        .shuffling-animation {
+            animation: pulse 0.1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.02); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800 flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm py-4 px-6 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <span class="text-3xl">⚽</span>
+                <span id="site-title-display" class="font-black text-xl text-blue-900">مسابقة التوقعات الكبرى</span>
+            </div>
+            <button onclick="openAdminModal()" class="bg-gray-100 p-2.5 rounded-full hover:bg-gray-200 transition">
+                ⚙️
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto p-4 w-full flex-grow">
+
+        <!-- تنبيه عدم تهيئة Firebase -->
+        <div id="firebase-warning" class="hidden bg-red-100 border-r-4 border-red-500 p-4 rounded-xl text-red-800 font-bold mb-4 text-xs">
+            ⚠️ النظام يعمل حالياً بوضع التخزين المؤقت (المحلي)، يرجى تفعيل إعدادات Firebase في الكود البرمجي لربط قاعدة البيانات السحابية.
+        </div>
+
+        <!-- 1. واجهة الدخول والتسجيل الموحدة -->
+        <section id="auth-section" class="max-w-md mx-auto bg-white rounded-3xl shadow-xl overflow-hidden mt-6 border border-gray-100">
+            <!-- التبويبات -->
+            <div class="flex border-b">
+                <button onclick="switchAuthTab('login')" id="tab-login" class="flex-1 py-4 text-center font-bold text-gray-500 hover:text-blue-950 transition active-tab">تسجيل الدخول</button>
+                <button onclick="switchAuthTab('register')" id="tab-register" class="flex-1 py-4 text-center font-bold text-gray-500 hover:text-blue-950 transition">حساب جديد</button>
+            </div>
+
+            <div class="p-6 space-y-6">
+                <!-- عرض شعارات المحلات للترويج -->
+                <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 text-center">
+                    <div>
+                        <img id="shop1-logo-auth" src="" class="w-14 h-14 rounded-full mx-auto mb-1 border-2 border-white shadow-sm object-cover">
+                        <p id="shop1-name-auth" class="font-bold text-xs text-blue-900"></p>
+                        <!-- وسائل التواصل المحل 1 -->
+                        <div class="flex justify-center gap-2 mt-2" id="shop1-socials-auth"></div>
+                    </div>
+                    <div class="border-r border-gray-200">
+                        <img id="shop2-logo-auth" src="" class="w-14 h-14 rounded-full mx-auto mb-1 border-2 border-white shadow-sm object-cover">
+                        <p id="shop2-name-auth" class="font-bold text-xs text-blue-900"></p>
+                        <!-- وسائل التواصل المحل 2 -->
+                        <div class="flex justify-center gap-2 mt-2" id="shop2-socials-auth"></div>
+                    </div>
+                </div>
+
+                <!-- نموذج تسجيل الدخول -->
+                <div id="form-login" class="space-y-4">
+                    <input id="login-username" type="text" placeholder="اسم المستخدم" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-500">
+                    <input id="login-password" type="password" placeholder="كلمة المرور" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-500">
+                    <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition">دخول الحساب</button>
+                </div>
+
+                <!-- نموذج التسجيل الجديد -->
+                <div id="form-register" class="hidden space-y-4">
+                    <input id="reg-fullname" type="text" placeholder="الاسم الرباعي الكامل (مثال: محمد علي أحمد حسن)" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-green-500">
+                    <input id="reg-phone" type="tel" placeholder="رقم الهاتف (مثال: 777xxxxxx)" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-green-500">
+                    <input id="reg-city" type="text" placeholder="المدينة" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-green-500">
+                    <input id="reg-username" type="text" placeholder="اسم مستخدم فريد (بالأحرف الإنجليزية فقط)" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-green-500">
+                    <input id="reg-password" type="password" placeholder="كلمة المرور" class="w-full p-3 border rounded-xl text-right outline-none focus:ring-2 focus:ring-green-500">
+                    
+                    <div class="bg-gray-50 p-3 rounded-xl">
+                        <p class="text-[11px] font-bold mb-2 text-gray-500">المحل المستهدف للمسابقة:</p>
+                        <div class="grid grid-cols-3 gap-2 text-xs">
+                            <button onclick="selectRegStore('s1')" id="reg-btn-s1" class="p-2 border rounded-lg bg-white"></button>
+                            <button onclick="selectRegStore('s2')" id="reg-btn-s2" class="p-2 border rounded-lg bg-white"></button>
+                            <button onclick="selectRegStore('both')" id="reg-btn-both" class="p-2 border rounded-lg bg-green-600 text-white font-bold">كلاهما</button>
+                        </div>
+                    </div>
+
+                    <button onclick="handleRegister()" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold hover:bg-green-700 transition">إنشاء الحساب والمشاركة</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. واجهة التوقعات والمباريات -->
+        <section id="predictions-section" class="hidden space-y-6">
+            <!-- الترويسة ووسائل التواصل الاجتماعي -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="text-right">
+                    <h2 class="font-bold text-lg text-blue-900">مرحباً، <span id="current-user-display" class="text-green-600">المتسابق</span> 👋</h2>
+                    <p class="text-xs text-gray-400">توقع المباريات قبل انطلاقها بـ 5 دقائق للحصول على أعلى النقاط!</p>
+                </div>
+                <div class="flex gap-4">
+                    <div class="text-center bg-gray-50 p-2 rounded-xl border">
+                        <p id="shop1-name-pred" class="text-[10px] font-bold text-gray-600"></p>
+                        <div class="flex gap-1.5 mt-1" id="shop1-socials-pred"></div>
+                    </div>
+                    <div class="text-center bg-gray-50 p-2 rounded-xl border">
+                        <p id="shop2-name-pred" class="text-[10px] font-bold text-gray-600"></p>
+                        <div class="flex gap-1.5 mt-1" id="shop2-socials-pred"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- قائمة المباريات النشطة -->
+            <div id="user-matches-list" class="grid gap-4">
+                <!-- ستضاف المباريات تلقائياً هنا -->
+            </div>
+
+            <!-- توقع البطل -->
+            <div id="champion-card" class="bg-blue-950 text-white p-6 rounded-3xl shadow-lg relative overflow-hidden">
+                <div class="relative z-10 space-y-3">
+                    <h3 class="text-lg font-bold text-center">🏆 توقع بطل الكأس النهائي</h3>
+                    <div id="champion-enabled-view" class="space-y-2">
+                        <input id="user-champion-input" type="text" placeholder="اكتب اسم المنتخب المتوقع..." class="w-full p-3 rounded-xl text-black text-right outline-none">
+                        <button onclick="saveChampionPrediction()" class="w-full bg-yellow-500 text-blue-950 font-black py-2.5 rounded-xl hover:bg-yellow-400 transition">حفظ توقع البطل</button>
+                    </div>
+                    <div id="champion-disabled-view" class="hidden p-4 bg-black/30 rounded-xl text-center text-yellow-300 font-bold text-sm">
+                        ⚠️ توقع البطل مغلق حالياً. سيتم تفعيله من قبل الإدارة لاحقاً.
+                    </div>
+                </div>
+            </div>
+            
+            <button onclick="logoutUser()" class="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-300 transition">تسجيل الخروج من الحساب</button>
+        </section>
+
+        <!-- 3. لوحة تحكم الإدارة (المدير) -->
+        <section id="admin-section" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-blue-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-black text-blue-900">لوحة تحكم المدير</h2>
+                    <button onclick="closeAdminPanel()" class="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold">خروج</button>
+                </div>
+
+                <!-- تغيير اسم الموقع وتصفير النظام -->
+                <div class="bg-red-50 p-4 rounded-2xl border border-red-100 space-y-4 mb-6">
+                    <h3 class="font-bold text-red-800 text-sm">⚙️ إعدادات المسابقة وتهيئة النظام</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-gray-600">اسم المسابقة / الموقع الحالي</label>
+                            <input id="admin-site-title" type="text" class="w-full p-2 border rounded-xl">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-gray-600">كلمة مرور الإدارة الجديدة</label>
+                            <input id="admin-new-pass" type="password" placeholder="اتركها فارغة لعدم التغيير" class="w-full p-2 border rounded-xl">
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="saveSystemCoreSettings()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">حفظ إعدادات الهوية</button>
+                        <button onclick="wipeAllSystemData()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold">🚨 تصفير ومحو كافة البيانات السابقة</button>
+                    </div>
+                </div>
+
+                <!-- تعديل المحلات ووسائل التواصل -->
+                <div class="grid md:grid-cols-2 gap-4 mb-6">
+                    <div class="p-4 bg-gray-50 rounded-2xl border space-y-2">
+                        <p class="font-bold text-xs text-blue-800">المحل 1 (ملابس)</p>
+                        <input id="admin-s1-name" type="text" placeholder="اسم المحل" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s1-logo" type="text" placeholder="رابط الشعار" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s1-ig" type="text" placeholder="رابط انستقرام" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s1-fb" type="text" placeholder="رابط فيسبوك" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s1-wa" type="text" placeholder="رابط واتساب" class="w-full p-2 border rounded-lg text-xs">
+                    </div>
+                    <div class="p-4 bg-gray-50 rounded-2xl border space-y-2">
+                        <p class="font-bold text-xs text-blue-800">المحل 2 (أحذية)</p>
+                        <input id="admin-s2-name" type="text" placeholder="اسم المحل" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s2-logo" type="text" placeholder="رابط الشعار" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s2-ig" type="text" placeholder="رابط انستقرام" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s2-fb" type="text" placeholder="رابط فيسبوك" class="w-full p-2 border rounded-lg text-xs">
+                        <input id="admin-s2-wa" type="text" placeholder="رابط واتساب" class="w-full p-2 border rounded-lg text-xs">
+                    </div>
+                </div>
+                <button onclick="saveStoresSettings()" class="w-full bg-blue-900 text-white py-2.5 rounded-xl font-bold text-sm">حفظ روابط وشعارات المحلات</button>
+            </div>
+
+            <!-- إدارة المباريات وتفعيل توقع بطل الكأس -->
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-blue-100">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg text-green-700">📆 إدارة المباريات بمرونة</h3>
+                    <div class="flex items-center gap-2 bg-yellow-50 p-2 rounded-xl border border-yellow-200">
+                        <label class="text-xs font-bold text-yellow-800">توقع بطل الكأس:</label>
+                        <select id="admin-champion-status" class="text-xs p-1 border rounded" onchange="toggleChampionStatus(this.value)">
+                            <option value="disabled">مغلق (خامل)</option>
+                            <option value="enabled">مفتوح للجميع</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- فورم إضافة مباراة جديدة -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 p-4 rounded-xl mb-4 border">
+                    <input id="m-add-tA" type="text" placeholder="الفريق الأول" class="p-2 border rounded-lg text-xs">
+                    <input id="m-add-tB" type="text" placeholder="الفريق الثاني" class="p-2 border rounded-lg text-xs">
+                    <input id="m-add-time" type="datetime-local" class="p-2 border rounded-lg text-[10px]">
+                    <input id="m-add-grp" type="text" placeholder="المجموعة / الدور" class="p-2 border rounded-lg text-xs">
+                    <button onclick="createNewMatch()" class="col-span-full bg-green-600 text-white py-2 rounded-lg text-xs font-bold">+ إضافة المباراة للجدول</button>
+                </div>
+
+                <!-- قائمة المباريات للإدارة وتحديث النتائج -->
+                <div id="admin-matches-list" class="space-y-2">
+                    <!-- تضاف المباريات هنا -->
+                </div>
+            </div>
+
+            <!-- محرك السحب والقرعة التفاعلية (Live Draw) -->
+            <div class="bg-white p-6 rounded-3xl shadow-lg border border-purple-100 text-center space-y-4">
+                <h3 class="font-bold text-lg text-purple-700">🎲 محرك السحب والقرعة التفاعلية (شفافية كاملة)</h3>
+                <p class="text-xs text-gray-500">سيظهر الاسم والفرز بتأثير بصري رائع ومصداقية تامة أمام المتابعين</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
+                    <div class="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                        <p class="font-bold text-xs mb-2">1. تصفية بطل الكأس الصحيح</p>
+                        <select id="raffle-champion-select" class="w-full p-2 border rounded-lg text-xs"></select>
+                    </div>
+                    <div class="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                        <p class="font-bold text-xs mb-2">2. تصفية نقاط التوقعات اليومية</p>
+                        <select id="raffle-points-filter" class="w-full p-2 border rounded-lg text-xs">
+                            <option value="all">الجميع (حسب النقاط التراكمية كفرص)</option>
+                            <option value="top">الأعلى نقاطاً فقط</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-8 rounded-2xl max-w-lg mx-auto border-4 border-yellow-400">
+                    <p class="text-xs text-yellow-400 tracking-widest uppercase mb-1">القرعة المباشرة</p>
+                    <div id="live-raffle-screen" class="text-2xl md:text-3xl font-black text-white py-6 h-20 flex items-center justify-center">
+                        بانتظار بدء السحب...
+                    </div>
+                </div>
+
+                <button onclick="startLiveRaffle()" class="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black text-lg hover:bg-purple-700 shadow-xl transition">
+                    🚀 بدء القرعة المباشرة (Shuffle)
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- مودال تسجيل دخول المدير -->
+    <div id="admin-login-modal" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-[100]">
+        <div class="bg-white p-8 rounded-3xl max-w-sm w-full shadow-2xl">
+            <h3 class="text-xl font-bold mb-6 text-center text-blue-900">دخول الإدارة</h3>
+            <input id="admin-pass-input" type="password" placeholder="كلمة مرور المدير" class="w-full p-3 border rounded-xl text-center outline-none focus:ring-2 focus:ring-blue-600 mb-4">
+            <div class="flex gap-2">
+                <button onclick="submitAdminLogin()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">دخول</button>
+                <button onclick="closeAdminModal()" class="flex-1 bg-gray-100 py-3 rounded-xl hover:bg-gray-200 transition">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال عرض بيانات الفائز بالقرعة بالتفصيل للتصوير والمصداقية -->
+    <div id="winner-profile-modal" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-[100]">
+        <div class="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl text-right relative">
+            <div class="text-center mb-6">
+                <span class="text-5xl">🎉</span>
+                <h3 class="text-2xl font-black text-green-600 mt-2">مبرووووك الفائز!</h3>
+            </div>
+            <div class="space-y-3 bg-gray-50 p-4 rounded-2xl border">
+                <p><strong>الاسم الرباعي:</strong> <span id="w-modal-name" class="text-blue-900 font-bold"></span></p>
+                <p><strong>رقم الهاتف:</strong> <span id="w-modal-phone" class="font-mono text-gray-700"></span></p>
+                <p><strong>المدينة:</strong> <span id="w-modal-city"></span></p>
+                <p><strong>اسم المستخدم:</strong> <span id="w-modal-username" class="text-xs bg-gray-200 px-2 py-1 rounded"></span></p>
+                <p><strong>المحل المسجل فيه:</strong> <span id="w-modal-store" class="font-bold text-green-700"></span></p>
+                <p><strong>توقع البطل:</strong> <span id="w-modal-champion" class="font-bold text-yellow-600"></span></p>
+            </div>
+            <button onclick="closeModal('winner-profile-modal')" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold mt-6 hover:bg-blue-700 transition">إغلاق وتأكيد</button>
+        </div>
+    </div>
+
+    <!-- Toast الإشعارات العائمة -->
+    <div id="toast-msg" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl z-[200] hidden items-center gap-2">
+        <span id="toast-icon">✨</span>
+        <span id="toast-text" class="text-xs font-bold">تم حفظ توقعك تلقائياً!</span>
+    </div>
+
+    <footer class="py-6 text-center text-xs text-gray-400 bg-white border-t mt-12">
+        <p>&copy; 2026 جميع الحقوق محفوظة لشركائنا التجاريين</p>
+    </footer>
+
+    <!-- SVG Icons Helper -->
+    <script>
+        const ICONS = {
+            ig: `<svg class="w-5 h-5 text-pink-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>`,
+            fb: `<svg class="w-5 h-5 text-blue-700" fill="currentColor" viewBox="0 0 24 24"><path d="M9 8H7v3h2v9h4v-9h3.6l.4-3H13V6c0-.5.5-1 1-1h2V1h-3c-3 0-5 2-5 5v2z"/></svg>`,
+            wa: `<svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.953 3.71 1.458 5.705 1.459h.006c6.55 0 11.885-5.335 11.888-11.892a11.83 11.83 0 00-3.486-8.412"/></svg>`
+        };
+    </script>
+
+    <!-- App Logical Code with Firebase Integration -->
+    <script>
+        // ==========================================
+        // 🚨 خطوة هامّة جداً: الصق إعدادات Firebase الخاصة بك هنا
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDu3zCyBHJ3rMKmX7Z0_XPvG1xjpqY2I0Y",
+  authDomain: "world-cup-predictions-45850.firebaseapp.com",
+  projectId: "world-cup-predictions-45850",
+  storageBucket: "world-cup-predictions-45850.firebasestorage.app",
+  messagingSenderId: "160656120766",
+  appId: "1:160656120766:web:e0ec4dee97ea238dbe77ef"
+        };
+
+        // فحص هل قمت بتهيئة المفاتيح أم لا
+        let isFirebaseActive = false;
+        if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                var fdb = firebase.firestore();
+                isFirebaseActive = true;
+            } catch (err) {
+                console.error("Firebase init failed: ", err);
+            }
+        } else {
+            // إظهار تنبيه للمبرمج بعدم تهيئة المشروع سحابياً بعد
+            document.getElementById('firebase-warning').classList.remove('hidden');
+        }
+
+        // --- البيانات الافتراضية البديلة (Fallback DB) لحين تفعيل فايربيس ---
+        let localDB = {
+            settings: {
+                shop1Name: "محل الملابس الأنيقة",
+                shop1Logo: "https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?w=100&h=100&fit=crop",
+                shop1Ig: "#", shop1Fb: "#", shop1Wa: "#",
+                shop2Name: "رويال للأحذية",
+                shop2Logo: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=100&h=100&fit=crop",
+                shop2Ig: "#", shop2Fb: "#", shop2Wa: "#",
+                adminPass: "123456",
+                siteTitle: "مسابقة التوقعات الكبرى",
+                championStatus: "disabled"
+            },
+            matches: [
+                { id: "1", tA: 'الأرجنتين', tB: 'المغرب', time: new Date(Date.now() + 86400000).toISOString(), group: 'المجموعة A', scoreA: null, scoreB: null },
+                { id: "2", tA: 'اليابان', tB: 'إسبانيا', time: new Date(Date.now() + 172800000).toISOString(), group: 'المجموعة B', scoreA: null, scoreB: null }
+            ],
+            users: [],
+            predictions: {}
+        };
+
+        // تحميل البيانات المحلية المؤقتة إن كانت موجودة
+        if (localStorage.getItem('sports_draw_db')) {
+            localDB = JSON.parse(localStorage.getItem('sports_draw_db'));
+        }
+
+        let db = localDB; // افتراضياً نستخدم المحلّي حتى نتصل بالفايربيس بنجاح
+        let currentUser = null;
+        let selectedStore = 'both';
+        let currentAuthTab = 'login';
+
+        // --- تهيئة البيانات عند تحميل الصفحة ---
+        window.onload = async function() {
+            if (isFirebaseActive) {
+                await syncDataFromFirebase();
+            }
+            updateGlobalUI();
+        };
+
+        // دالة سحب كافة البيانات والمسابقات من فايربيس
+        async function syncDataFromFirebase() {
+            try {
+                // 1. جلب الإعدادات العامة للمسابقة
+                const settingsSnap = await fdb.collection('system').doc('settings').get();
+                if (settingsSnap.exists) {
+                    db.settings = settingsSnap.data();
+                } else {
+                    // إذا كان المشروع جديداً، ننشئ الإعدادات الافتراضية في قاعدة البيانات السحابية فوراً
+                    await fdb.collection('system').doc('settings').set(db.settings);
+                }
+
+                // 2. جلب جدول المباريات
+                const matchesSnap = await fdb.collection('matches').get();
+                let fbMatches = [];
+                matchesSnap.forEach(doc => {
+                    fbMatches.push({ id: doc.id, ...doc.data() });
+                });
+                if (fbMatches.length > 0) {
+                    db.matches = fbMatches;
+                } else {
+                    // رفع المباريات الافتراضية للبداية
+                    for (let m of db.matches) {
+                        await fdb.collection('matches').doc(String(m.id)).set(m);
+                    }
+                }
+
+                // 3. جلب بيانات المشتركين
+                const usersSnap = await fdb.collection('users').get();
+                let fbUsers = [];
+                usersSnap.forEach(doc => {
+                    fbUsers.push(doc.data());
+                });
+                db.users = fbUsers;
+
+                // 4. جلب كافة التوقعات
+                const predSnap = await fdb.collection('predictions').get();
+                let fbPreds = {};
+                predSnap.forEach(doc => {
+                    fbPreds[doc.id] = doc.data().choice;
+                });
+                db.predictions = fbPreds;
+
+            } catch (err) {
+                console.error("Error syncing with Firebase: ", err);
+                showToast("⚠️ فشل الاتصال بالسحابة، نعمل بالذاكرة المحلية حالياً.");
+            }
+        }
+
+        function updateGlobalUI() {
+            // تحديث اسم الموقع والشعارات
+            document.getElementById('site-title-display').innerText = db.settings.siteTitle;
+            
+            // واجهة الدخول
+            document.getElementById('shop1-name-auth').innerText = db.settings.shop1Name;
+            document.getElementById('shop1-logo-auth').src = db.settings.shop1Logo;
+            document.getElementById('shop2-name-auth').innerText = db.settings.shop2Name;
+            document.getElementById('shop2-logo-auth').src = db.settings.shop2Logo;
+
+            // تحديث مواقع التواصل
+            renderSocials('shop1-socials-auth', db.settings.shop1Ig, db.settings.shop1Fb, db.settings.shop1Wa);
+            renderSocials('shop2-socials-auth', db.settings.shop2Ig, db.settings.shop2Fb, db.settings.shop2Wa);
+
+            // تفعيل حقول المحلات في فورمة التسجيل
+            document.getElementById('reg-btn-s1').innerText = db.settings.shop1Name;
+            document.getElementById('reg-btn-s2').innerText = db.settings.shop2Name;
+        }
+
+        function renderSocials(containerId, ig, fb, wa) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `
+                <a href="${ig}" target="_blank" class="p-1.5 bg-white rounded-full shadow-sm block">${ICONS.ig}</a>
+                <a href="${fb}" target="_blank" class="p-1.5 bg-white rounded-full shadow-sm block">${ICONS.fb}</a>
+                <a href="${wa}" target="_blank" class="p-1.5 bg-white rounded-full shadow-sm block">${ICONS.wa}</a>
+            `;
+        }
+
+        // --- إدارة التبويبات والدخول والتسجيل ---
+        function switchAuthTab(tab) {
+            currentAuthTab = tab;
+            if(tab === 'login') {
+                document.getElementById('tab-login').className = "flex-1 py-4 text-center font-bold text-blue-900 active-tab";
+                document.getElementById('tab-register').className = "flex-1 py-4 text-center font-bold text-gray-500";
+                document.getElementById('form-login').classList.remove('hidden');
+                document.getElementById('form-register').classList.add('hidden');
+            } else {
+                document.getElementById('tab-register').className = "flex-1 py-4 text-center font-bold text-blue-900 active-tab";
+                document.getElementById('tab-login').className = "flex-1 py-4 text-center font-bold text-gray-500";
+                document.getElementById('form-register').classList.remove('hidden');
+                document.getElementById('form-login').classList.add('hidden');
+            }
+        }
+
+        function selectRegStore(store) {
+            selectedStore = store;
+            ['reg-btn-s1', 'reg-btn-s2', 'reg-btn-both'].forEach(id => {
+                document.getElementById(id).className = "p-2 border rounded-lg bg-white";
+            });
+            const activeId = store === 's1' ? 'reg-btn-s1' : store === 's2' ? 'reg-btn-s2' : 'reg-btn-both';
+            document.getElementById(activeId).className = "p-2 border rounded-lg bg-green-600 text-white font-bold";
+        }
+
+        // تسجيل حساب جديد وحفظه سحابياً في فايربيس
+        async function handleRegister() {
+            const fullname = document.getElementById('reg-fullname').value.trim();
+            const phone = document.getElementById('reg-phone').value.trim();
+            const city = document.getElementById('reg-city').value.trim();
+            const username = document.getElementById('reg-username').value.trim().toLowerCase();
+            const pass = document.getElementById('reg-password').value.trim();
+
+            // فحص الاسم الرباعي للحماية ومنع الاسماء الوهمية
+            const words = fullname.split(/\s+/).filter(w => w.length >= 2);
+            if(words.length < 4) {
+                alert('الاسم يجب أن يكون رباعياً كاملاً لضمان المصداقية وتأكيد الهوية عند استلام الجوائز بالقرعة المباشرة.');
+                return;
+            }
+
+            if(!phone || !city || !username || !pass) {
+                alert('يرجى ملء جميع الحقول المطلوبة.');
+                return;
+            }
+
+            // فحص عدم تكرار الهاتف واسم المستخدم
+            if (isFirebaseActive) {
+                try {
+                    const userCheck = await fdb.collection('users').doc(username).get();
+                    if (userCheck.exists) {
+                        alert('اسم المستخدم هذا محجوز مسبقاً، اختر اسماً آخر.');
+                        return;
+                    }
+
+                    // التحقق من رقم الهاتف بسيرش سريع
+                    const phoneCheck = await fdb.collection('users').where('phone', '==', phone).get();
+                    if (!phoneCheck.empty) {
+                        alert('رقم الهاتف هذا مسجل مسبقاً! يرجى الدخول ببياناتك السابقة.');
+                        return;
+                    }
+                } catch(e) {
+                    console.error("Database query failed: ", e);
+                }
+            } else {
+                // فحص محلي مؤقت
+                if (db.users.find(u => u.username === username)) {
+                    alert('اسم المستخدم هذا محجوز مسبقاً، اختر اسماً آخر.');
+                    return;
+                }
+                if (db.users.find(u => u.phone === phone)) {
+                    alert('رقم الهاتف هذا مسجل مسبقاً! يرجى الدخول ببياناتك السابقة.');
+                    return;
+                }
+            }
+
+            const newUser = {
+                fullname, phone, city, username, pass, store: selectedStore, champion: ''
+            };
+
+            if (isFirebaseActive) {
+                try {
+                    await fdb.collection('users').doc(username).set(newUser);
+                    db.users.push(newUser); // تحديث كاش الذاكرة
+                    alert('تهانينا! تم إنشاء حسابك بنجاح على قاعدة البيانات السحابية.');
+                } catch (err) {
+                    alert('حدث خطأ أثناء الاتصال بـ Firebase: ' + err.message);
+                    return;
+                }
+            } else {
+                db.users.push(newUser);
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+                alert('تم تسجيل الحساب محلياً بنجاح (الموقع ليس متصلاً بفايربيس حالياً).');
+            }
+
+            switchAuthTab('login');
+        }
+
+        // تسجيل الدخول والتحقق من كلمة المرور
+        async function handleLogin() {
+            const user = document.getElementById('login-username').value.trim().toLowerCase();
+            const pass = document.getElementById('login-password').value.trim();
+
+            if (isFirebaseActive) {
+                try {
+                    const userSnap = await fdb.collection('users').doc(user).get();
+                    if (!userSnap.exists) {
+                        alert('خطأ في اسم المستخدم أو كلمة المرور');
+                        return;
+                    }
+                    const userData = userSnap.data();
+                    if (userData.pass !== pass) {
+                        alert('كلمة المرور غير صحيحة');
+                        return;
+                    }
+                    currentUser = userData;
+                } catch(err) {
+                    alert('خطأ في الاتصال بقاعدة البيانات: ' + err.message);
+                    return;
+                }
+            } else {
+                const found = db.users.find(u => u.username === user && u.pass === pass);
+                if(!found) {
+                    alert('خطأ في اسم المستخدم أو كلمة المرور');
+                    return;
+                }
+                currentUser = found;
+            }
+
+            showPredictionsDashboard();
+        }
+
+        // --- عرض واجهة التوقعات للمستخدم المعتمد ---
+        function showPredictionsDashboard() {
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('predictions-section').classList.remove('hidden');
+            
+            document.getElementById('current-user-display').innerText = currentUser.fullname;
+
+            // تحديث عناوين المحلات
+            document.getElementById('shop1-name-pred').innerText = db.settings.shop1Name;
+            document.getElementById('shop2-name-pred').innerText = db.settings.shop2Name;
+            renderSocials('shop1-socials-pred', db.settings.shop1Ig, db.settings.shop1Fb, db.settings.shop1Wa);
+            renderSocials('shop2-socials-pred', db.settings.shop2Ig, db.settings.shop2Fb, db.settings.shop2Wa);
+
+            // تفعيل أو إلغاء توقع بطل المونديال بناءً على إعدادات المدير
+            if(db.settings.championStatus === 'enabled') {
+                document.getElementById('champion-enabled-view').classList.remove('hidden');
+                document.getElementById('champion-disabled-view').classList.add('hidden');
+                document.getElementById('user-champion-input').value = currentUser.champion || '';
+            } else {
+                document.getElementById('champion-enabled-view').classList.add('hidden');
+                document.getElementById('champion-disabled-view').classList.remove('hidden');
+            }
+
+            renderUserMatches();
+        }
+
+        function renderUserMatches() {
+            const listContainer = document.getElementById('user-matches-list');
+            listContainer.innerHTML = '';
+
+            db.matches.forEach(m => {
+                const now = new Date();
+                const matchTime = new Date(m.time);
+                // مسموح فقط قبل المباراة بـ 5 دقائق
+                const limitTime = new Date(matchTime.getTime() - 5 * 60 * 1000);
+                const isLocked = now >= limitTime;
+
+                // قراءة التوقع السابق
+                const savedPredKey = `${currentUser.username}_${m.id}`;
+                const savedVal = db.predictions[savedPredKey] || null;
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3 relative overflow-hidden";
+                
+                let lockBadge = "";
+                if(isLocked) {
+                    lockBadge = `<span class="bg-red-50 text-red-600 px-2.5 py-1 rounded-lg font-bold text-[10px] flex items-center gap-1">🔒 مغلق</span>`;
+                } else {
+                    lockBadge = `<span class="bg-green-50 text-green-600 px-2.5 py-1 rounded-lg font-bold text-[10px] flex items-center gap-1">🔓 متاح للتوقع</span>`;
+                }
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-gray-400 font-bold">${m.group}</span>
+                        <div class="flex gap-2 items-center">
+                            ${lockBadge}
+                            <span class="text-gray-500">${matchTime.toLocaleString('ar-SA')}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between py-2">
+                        <div class="text-center w-5/12">
+                            <p class="font-black text-sm text-gray-800">${m.tA}</p>
+                        </div>
+                        <div class="text-xs bg-gray-100 text-gray-500 font-bold px-3 py-1 rounded-full">VS</div>
+                        <div class="text-center w-5/12">
+                            <p class="font-black text-sm text-gray-800">${m.tB}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="savePrediction('${m.id}', 'A', ${isLocked})" id="btn-${m.id}-A" class="p-2.5 border rounded-xl text-xs font-bold transition">فوز ${m.tA}</button>
+                        <button onclick="savePrediction('${m.id}', 'D', ${isLocked})" id="btn-${m.id}-D" class="p-2.5 border rounded-xl text-xs font-bold transition">تعادل</button>
+                        <button onclick="savePrediction('${m.id}', 'B', ${isLocked})" id="btn-${m.id}-B" class="p-2.5 border rounded-xl text-xs font-bold transition">فوز ${m.tB}</button>
+                    </div>
+                `;
+
+                listContainer.appendChild(card);
+
+                // تطبيق التحديد البصري للتوقع السابق
+                if(savedVal) {
+                    const activeBtn = card.querySelector(`#btn-${m.id}-${savedVal}`);
+                    if(activeBtn) {
+                        activeBtn.className = "p-2.5 border border-blue-600 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 shadow-sm";
+                    }
+                }
+
+                // تعطيل الأزرار إذا تم قفل المباراة
+                if(isLocked) {
+                    ['A', 'D', 'B'].forEach(v => {
+                        const btn = card.querySelector(`#btn-${m.id}-${v}`);
+                        if(btn && v !== savedVal) {
+                            btn.className = "p-2.5 border rounded-xl text-xs font-bold bg-gray-50 text-gray-300 cursor-not-allowed";
+                            btn.disabled = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        // حفظ التوقع فوراً على قاعدة بيانات السيرفر
+        async function savePrediction(matchId, choice, isLocked) {
+            if(isLocked) {
+                alert('عذراً، انتهى الوقت المسموح لتوقع هذه المباراة.');
+                return;
+            }
+
+            const predKey = `${currentUser.username}_${matchId}`;
+            db.predictions[predKey] = choice;
+
+            if (isFirebaseActive) {
+                try {
+                    await fdb.collection('predictions').doc(predKey).set({
+                        username: currentUser.username,
+                        matchId: matchId,
+                        choice: choice
+                    });
+                } catch(e) {
+                    console.error("Failed to save prediction: ", e);
+                }
+            } else {
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+            }
+
+            renderUserMatches();
+            showToast("تم حفظ التوقع تلقائياً! ⚽");
+        }
+
+        // حفظ توقع بطل الكأس النهائي سحابياً
+        async function saveChampionPrediction() {
+            const val = document.getElementById('user-champion-input').value.trim();
+            if(!val) return alert('يرجى إدخال اسم البطل أولاً');
+            
+            currentUser.champion = val;
+
+            if (isFirebaseActive) {
+                try {
+                    await fdb.collection('users').doc(currentUser.username).update({
+                        champion: val
+                    });
+                    showToast("تم حفظ بطل المونديال! 🏆");
+                } catch(e) {
+                    alert('حدث خطأ أثناء الحفظ السحابي: ' + e.message);
+                }
+            } else {
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+                showToast("تم حفظ بطل المونديال! 🏆");
+            }
+        }
+
+        function logoutUser() {
+            currentUser = null;
+            document.getElementById('predictions-section').classList.add('hidden');
+            document.getElementById('auth-section').classList.remove('hidden');
+        }
+
+        // --- إدارة لوحة التحكم (المدير) ---
+        function openAdminModal() { document.getElementById('admin-login-modal').style.display = 'flex'; }
+        function closeAdminModal() { document.getElementById('admin-login-modal').style.display = 'none'; }
+
+        function submitAdminLogin() {
+            const pass = document.getElementById('admin-pass-input').value;
+            if(pass === db.settings.adminPass) {
+                closeAdminModal();
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('predictions-section').classList.add('hidden');
+                document.getElementById('admin-section').classList.remove('hidden');
+                loadAdminPanelData();
+            } else {
+                alert('كلمة المرور غير صحيحة');
+            }
+        }
+
+        function closeAdminPanel() {
+            document.getElementById('admin-section').classList.add('hidden');
+            document.getElementById('auth-section').classList.remove('hidden');
+        }
+
+        function loadAdminPanelData() {
+            document.getElementById('admin-site-title').value = db.settings.siteTitle;
+            
+            // روابط المحلات
+            document.getElementById('admin-s1-name').value = db.settings.shop1Name;
+            document.getElementById('admin-s1-logo').value = db.settings.shop1Logo;
+            document.getElementById('admin-s1-ig').value = db.settings.shop1Ig;
+            document.getElementById('admin-s1-fb').value = db.settings.shop1Fb;
+            document.getElementById('admin-s1-wa').value = db.settings.shop1Wa;
+
+            document.getElementById('admin-s2-name').value = db.settings.shop2Name;
+            document.getElementById('admin-s2-logo').value = db.settings.shop2Logo;
+            document.getElementById('admin-s2-ig').value = db.settings.shop2Ig;
+            document.getElementById('admin-s2-fb').value = db.settings.shop2Fb;
+            document.getElementById('admin-s2-wa').value = db.settings.shop2Wa;
+
+            document.getElementById('admin-champion-status').value = db.settings.championStatus;
+
+            renderAdminMatches();
+            renderAdminRaffleOptions();
+        }
+
+        async function saveSystemCoreSettings() {
+            const newTitle = document.getElementById('admin-site-title').value.trim();
+            const newPass = document.getElementById('admin-new-pass').value.trim();
+
+            if(newTitle) db.settings.siteTitle = newTitle;
+            if(newPass) db.settings.adminPass = newPass;
+
+            if (isFirebaseActive) {
+                await fdb.collection('system').doc('settings').set(db.settings);
+            } else {
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+            }
+            updateGlobalUI();
+            alert('تم حفظ إعدادات النظام وتحديث عنوان الموقع.');
+        }
+
+        async function saveStoresSettings() {
+            db.settings.shop1Name = document.getElementById('admin-s1-name').value.trim();
+            db.settings.shop1Logo = document.getElementById('admin-s1-logo').value.trim();
+            db.settings.shop1Ig = document.getElementById('admin-s1-ig').value.trim();
+            db.settings.shop1Fb = document.getElementById('admin-s1-fb').value.trim();
+            db.settings.shop1Wa = document.getElementById('admin-s1-wa').value.trim();
+
+            db.settings.shop2Name = document.getElementById('admin-s2-name').value.trim();
+            db.settings.shop2Logo = document.getElementById('admin-s2-logo').value.trim();
+            db.settings.shop2Ig = document.getElementById('admin-s2-ig').value.trim();
+            db.settings.shop2Fb = document.getElementById('admin-s2-fb').value.trim();
+            db.settings.shop2Wa = document.getElementById('admin-s2-wa').value.trim();
+
+            if (isFirebaseActive) {
+                await fdb.collection('system').doc('settings').set(db.settings);
+            } else {
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+            }
+            updateGlobalUI();
+            alert('تم حفظ روابط وشعارات المحلات بنجاح.');
+        }
+
+        // مسح وتصفير كافة البيانات للبدء في بطولة جديدة
+        async function wipeAllSystemData() {
+            const confirmWipe = confirm('⚠️ تنبيه خطير جداً: هل أنت متأكد من مسح كافة بيانات المشتركين والمباريات والتوقعات تماماً من السحابة؟ لا يمكن التراجع عن هذه الخطوة!');
+            if(confirmWipe) {
+                if (isFirebaseActive) {
+                    try {
+                        // مسح المشتركين
+                        const usersRef = await fdb.collection('users').get();
+                        for (let doc of usersRef.docs) { await doc.ref.delete(); }
+
+                        // مسح التوقعات
+                        const predRef = await fdb.collection('predictions').get();
+                        for (let doc of predRef.docs) { await doc.ref.delete(); }
+
+                        // مسح المباريات
+                        const matchesRef = await fdb.collection('matches').get();
+                        for (let doc of matchesRef.docs) { await doc.ref.delete(); }
+
+                        alert('تم تهيئة نظام السحابة بالكامل وتصفيره بنجاح.');
+                    } catch(err) {
+                        alert('حدث خطأ أثناء مسح قاعدة البيانات السحابية: ' + err.message);
+                    }
+                } else {
+                    db.users = [];
+                    db.predictions = {};
+                    db.matches = [];
+                    localStorage.setItem('sports_draw_db', JSON.stringify(db));
+                    alert('تم تهيئة الذاكرة المحلية المؤقتة بنجاح.');
+                }
+                location.reload();
+            }
+        }
+
+        async function toggleChampionStatus(status) {
+            db.settings.championStatus = status;
+            if (isFirebaseActive) {
+                await fdb.collection('system').doc('settings').update({ championStatus: status });
+            } else {
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+            }
+            showToast("تم تحديث حالة توقع البطل");
+        }
+
+        // إضافة مباراة جديدة بمرونة كاملة
+        async function createNewMatch() {
+            const tA = document.getElementById('m-add-tA').value.trim();
+            const tB = document.getElementById('m-add-tB').value.trim();
+            const time = document.getElementById('m-add-time').value;
+            const grp = document.getElementById('m-add-grp').value.trim();
+
+            if(!tA || !tB || !time) {
+                alert('يرجى إدخال بيانات المباراة بشكل كامل.');
+                return;
+            }
+
+            const newId = String(Date.now());
+            const newMatch = {
+                id: newId, tA, tB, time, group: grp || 'بطولة عامة', scoreA: null, scoreB: null
+            };
+
+            if (isFirebaseActive) {
+                try {
+                    await fdb.collection('matches').doc(newId).set(newMatch);
+                } catch(e) {
+                    console.error("Failed to add match to Firestore: ", e);
+                }
+            }
+            db.matches.push(newMatch);
+            localStorage.setItem('sports_draw_db', JSON.stringify(db));
+
+            renderAdminMatches();
+
+            // مسح الخانات بعد الإضافة
+            document.getElementById('m-add-tA').value = '';
+            document.getElementById('m-add-tB').value = '';
+        }
+
+        function renderAdminMatches() {
+            const container = document.getElementById('admin-matches-list');
+            container.innerHTML = '';
+
+            db.matches.forEach(m => {
+                const item = document.createElement('div');
+                item.className = "flex flex-wrap items-center justify-between p-4 bg-white border rounded-xl gap-2 shadow-sm text-xs";
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold text-blue-900">${m.tA} vs ${m.tB}</span>
+                        <span class="text-gray-400">(${m.group})</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">النتيجة:</span>
+                        <input id="score-A-${m.id}" type="number" placeholder="0" value="${m.scoreA !== null ? m.scoreA : ''}" class="w-10 p-1 border rounded text-center font-bold">
+                        <input id="score-B-${m.id}" type="number" placeholder="0" value="${m.scoreB !== null ? m.scoreB : ''}" class="w-10 p-1 border rounded text-center font-bold">
+                        <button onclick="saveMatchResult('${m.id}')" class="bg-green-600 text-white px-3 py-1 rounded font-bold">حفظ</button>
+                        <button onclick="deleteMatch('${m.id}')" class="text-red-500 hover:underline">حذف</button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        async function saveMatchResult(matchId) {
+            const scA = document.getElementById(`score-A-${matchId}`).value;
+            const scB = document.getElementById(`score-B-${matchId}`).value;
+
+            const m = db.matches.find(item => item.id === matchId);
+            if(m) {
+                m.scoreA = scA !== "" ? parseInt(scA) : null;
+                m.scoreB = scB !== "" ? parseInt(scB) : null;
+
+                if (isFirebaseActive) {
+                    try {
+                        await fdb.collection('matches').doc(matchId).update({
+                            scoreA: m.scoreA,
+                            scoreB: m.scoreB
+                        });
+                    } catch(e) {
+                        console.error("Failed to update match score: ", e);
+                    }
+                } else {
+                    localStorage.setItem('sports_draw_db', JSON.stringify(db));
+                }
+
+                alert('تم تحديث نتيجة المباراة بنجاح، وسيتم إعادة احتساب نقاط المتسابقين فوراً.');
+                renderAdminRaffleOptions();
+            }
+        }
+
+        async function deleteMatch(matchId) {
+            const confirmDelete = confirm('هل أنت متأكد من حذف هذه المباراة نهائياً؟');
+            if(confirmDelete) {
+                if (isFirebaseActive) {
+                    try {
+                        await fdb.collection('matches').doc(matchId).delete();
+                    } catch(e) {
+                        console.error("Failed to delete from firestore: ", e);
+                    }
+                }
+                db.matches = db.matches.filter(m => m.id !== matchId);
+                localStorage.setItem('sports_draw_db', JSON.stringify(db));
+                renderAdminMatches();
+            }
+        }
+
+        // --- محرك الفرز والقرعة التفاعلية الشفافة ---
+        function renderAdminRaffleOptions() {
+            const select = document.getElementById('raffle-champion-select');
+            select.innerHTML = '<option value="all">أي بطل (عدم التصفية بالبطل)</option>';
+            
+            // حصر التوقعات الفريدة للبطل لفرزها
+            const champions = [...new Set(db.users.map(u => u.champion).filter(Boolean))];
+            champions.forEach(c => {
+                select.innerHTML += `<option value="${c}">${c}</option>`;
+            });
+        }
+
+        // احتساب نقاط المستخدم بناءً على التوقعات والنتائج الحقيقية
+        function getUserPoints(user) {
+            let points = 0;
+            db.matches.forEach(m => {
+                if(m.scoreA === null || m.scoreB === null) return;
+
+                // التوقع المخزن
+                const predKey = `${user.username}_${m.id}`;
+                const userPred = db.predictions[predKey];
+
+                if(userPred) {
+                    let actualResult = 'D';
+                    if(m.scoreA > m.scoreB) actualResult = 'A';
+                    if(m.scoreA < m.scoreB) actualResult = 'B';
+
+                    if(userPred === actualResult) {
+                        points += 3; // 3 نقاط للتوقع الصحيح لنتيجة الفوز/التعادل
+                    }
+                }
+            });
+            return points;
+        }
+
+        // بدء السحب التفاعلي بالبث المباشر مع حركة القرعة
+        function startLiveRaffle() {
+            const filterChampion = document.getElementById('raffle-champion-select').value;
+            const pointsFilter = document.getElementById('raffle-points-filter').value;
+
+            // 1. تصفية المستخدمين المؤهلين
+            let eligibleUsers = [...db.users];
+
+            if(filterChampion !== 'all') {
+                eligibleUsers = eligibleUsers.filter(u => u.champion === filterChampion);
+            }
+
+            if(eligibleUsers.length === 0) {
+                alert('لا يوجد مشتركين مطابقين لشروط التصفية والفرز الحالية.');
+                return;
+            }
+
+            // احتساب نقاط الجميع
+            eligibleUsers.forEach(u => {
+                u.points = getUserPoints(u);
+            });
+
+            // تصفية أصحاب أعلى نقاط إذا حددتها الإدارة
+            if(pointsFilter === 'top') {
+                const maxPoints = Math.max(...eligibleUsers.map(u => u.points));
+                eligibleUsers = eligibleUsers.filter(u => u.points === maxPoints);
+            }
+
+            // بناء سلة التذاكر (الفرص): كلما زادت نقاط المستخدم، زاد تكرار اسمه في السلة وحظه بالفرز!
+            let rafflePool = [];
+            eligibleUsers.forEach(u => {
+                const tickets = Math.max(1, u.points);
+                for(let i = 0; i < tickets; i++) {
+                    rafflePool.push(u);
+                }
+            });
+
+            const screen = document.getElementById('live-raffle-screen');
+            screen.className = "text-2xl md:text-3xl font-black text-yellow-400 py-6 h-20 flex items-center justify-center shuffling-animation";
+
+            let duration = 3000; // 3 ثواني من الدوران البصري لزيادة التشويق في السحب أمام المتابعين
+            let intervalTime = 100;
+            let elapsed = 0;
+
+            const shuffleTimer = setInterval(() => {
+                const tempWinner = rafflePool[Math.floor(Math.random() * rafflePool.length)];
+                screen.innerText = tempWinner.fullname;
+                elapsed += intervalTime;
+
+                if(elapsed >= duration) {
+                    clearInterval(shuffleTimer);
+                    screen.classList.remove('shuffling-animation');
+                    screen.className = "text-3xl md:text-4xl font-black text-green-400 py-6 h-20 flex items-center justify-center";
+
+                    // اختيار الفائز النهائي
+                    const finalWinner = rafflePool[Math.floor(Math.random() * rafflePool.length)];
+                    screen.innerText = finalWinner.fullname;
+
+                    // إظهار بطاقة الفائز الكاملة للتصوير والتوثيق للمتابعين
+                    setTimeout(() => {
+                        showWinnerProfile(finalWinner);
+                    }, 500);
+                }
+            }, intervalTime);
+        }
+
+        function showWinnerProfile(winner) {
+            document.getElementById('w-modal-name').innerText = winner.fullname;
+            document.getElementById('w-modal-phone').innerText = winner.phone;
+            document.getElementById('w-modal-city').innerText = winner.city;
+            document.getElementById('w-modal-username').innerText = winner.username;
+            document.getElementById('w-modal-store').innerText = winner.store === 'both' ? 'كلا المحلين للملابس والأحذية' : (winner.store === 's1' ? db.settings.shop1Name : db.settings.shop2Name);
+            document.getElementById('w-modal-champion').innerText = winner.champion || 'لم يقم بالتوقع بعد';
+            
+            document.getElementById('winner-profile-modal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        // --- Toast Helpers ---
+        function showToast(text) {
+            const toast = document.getElementById('toast-msg');
+            document.getElementById('toast-text').innerText = text;
+            toast.classList.remove('hidden');
+            toast.classList.add('flex');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('flex');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
