@@ -1,4 +1,4 @@
-<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -172,9 +172,13 @@
                             <label class="block text-xs font-bold mb-1 text-gray-600">كلمة مرور الإدارة الجديدة</label>
                             <input id="admin-new-pass" type="password" placeholder="اتركها فارغة لعدم التغيير" class="w-full p-2 border rounded-xl">
                         </div>
+                        <div class="col-span-full">
+                            <label class="block text-xs font-bold mb-1 text-purple-800">🏆 البطل الفعلي للبطولة (لتصفية المتوقعين بشكل صحيح):</label>
+                            <input id="admin-actual-champion" type="text" placeholder="اكتب اسم البطل الفعلي للبطولة (مثال: البرازيل)" class="w-full p-2 border border-purple-300 rounded-xl font-bold text-purple-950">
+                        </div>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="saveSystemCoreSettings()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">حفظ إعدادات الهوية</button>
+                        <button onclick="saveSystemCoreSettings()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">حفظ إعدادات الهوية والبطل</button>
                         <button onclick="wipeAllSystemData()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold">🚨 تصفير ومحو كافة البيانات السابقة</button>
                     </div>
                 </div>
@@ -236,14 +240,19 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
                     <div class="p-4 bg-purple-50 rounded-2xl border border-purple-100">
-                        <p class="font-bold text-xs mb-2">1. تصفية بطل الكأس الصحيح</p>
-                        <select id="raffle-champion-select" class="w-full p-2 border rounded-lg text-xs"></select>
+                        <p class="font-bold text-xs mb-2">1. طريقة تصفية بطل الكأس الصحيح</p>
+                        <select id="raffle-mode-select" class="w-full p-2 border rounded-lg text-xs">
+                            <option value="champion-weighted">توقع البطل الصحيح (النقاط اليومية تعطي فرصاً أكبر)</option>
+                            <option value="champion-equal">توقع البطل الصحيح فقط (فرص متساوية للجميع)</option>
+                            <option value="all-weighted">جميع المشتركين (حسب النقاط اليومية كفرص - بدون شرط البطل)</option>
+                            <option value="all-equal">جميع المشتركين (فرص متساوية للجميع)</option>
+                        </select>
                     </div>
                     <div class="p-4 bg-purple-50 rounded-2xl border border-purple-100">
                         <p class="font-bold text-xs mb-2">2. تصفية نقاط التوقعات اليومية</p>
                         <select id="raffle-points-filter" class="w-full p-2 border rounded-lg text-xs">
                             <option value="all">الجميع (حسب النقاط التراكمية كفرص)</option>
-                            <option value="top">الأعلى نقاطاً فقط</option>
+                            <option value="top">الأعلى نقاطاً فقط (تصفية المتساوين بالأعلى)</option>
                         </select>
                     </div>
                 </div>
@@ -353,7 +362,8 @@
                 shop2Ig: "#", shop2Fb: "#", shop2Wa: "#",
                 adminPass: "123456",
                 siteTitle: "مسابقة التوقعات الكبرى",
-                championStatus: "disabled"
+                championStatus: "disabled",
+                actualChampion: ""
             },
             matches: [
                 { id: "1", tA: 'الأرجنتين', tB: 'المغرب', time: new Date(Date.now() + 86400000).toISOString(), group: 'المجموعة A', scoreA: null, scoreB: null },
@@ -389,7 +399,6 @@
                 if (settingsSnap.exists) {
                     db.settings = settingsSnap.data();
                 } else {
-                    // إذا كان المشروع جديداً، ننشئ الإعدادات الافتراضية في قاعدة البيانات السحابية فوراً
                     await fdb.collection('system').doc('settings').set(db.settings);
                 }
 
@@ -402,7 +411,6 @@
                 if (fbMatches.length > 0) {
                     db.matches = fbMatches;
                 } else {
-                    // رفع المباريات الافتراضية للبداية
                     for (let m of db.matches) {
                         await fdb.collection('matches').doc(String(m.id)).set(m);
                     }
@@ -722,6 +730,12 @@
             
             currentUser.champion = val;
 
+            // تحديث نسخة مصفوفة المستخدمين المحلية لضمان قراءتها فوراً بالقرعة
+            const uIdx = db.users.findIndex(u => u.username === currentUser.username);
+            if(uIdx !== -1) {
+                db.users[uIdx].champion = val;
+            }
+
             if (isFirebaseActive) {
                 try {
                     await fdb.collection('users').doc(currentUser.username).update({
@@ -745,6 +759,8 @@
 
         // --- إدارة لوحة التحكم (المدير) ---
         function openAdminModal() { document.getElementById('admin-login-modal').style.display = 'flex'; }
+        
+        // إصلاح فوري لدالة إغلاق المودال لمنع التجميد البرمجي
         function closeAdminModal() { document.getElementById('admin-login-modal').style.display = 'none'; }
 
         function submitAdminLogin() {
@@ -767,6 +783,7 @@
 
         function loadAdminPanelData() {
             document.getElementById('admin-site-title').value = db.settings.siteTitle;
+            document.getElementById('admin-actual-champion').value = db.settings.actualChampion || '';
             
             // روابط المحلات
             document.getElementById('admin-s1-name').value = db.settings.shop1Name;
@@ -790,9 +807,11 @@
         async function saveSystemCoreSettings() {
             const newTitle = document.getElementById('admin-site-title').value.trim();
             const newPass = document.getElementById('admin-new-pass').value.trim();
+            const actualChamp = document.getElementById('admin-actual-champion').value.trim();
 
             if(newTitle) db.settings.siteTitle = newTitle;
             if(newPass) db.settings.adminPass = newPass;
+            db.settings.actualChampion = actualChamp; // تعيين بطل كأس العالم الفعلي
 
             if (isFirebaseActive) {
                 await fdb.collection('system').doc('settings').set(db.settings);
@@ -800,7 +819,7 @@
                 localStorage.setItem('sports_draw_db', JSON.stringify(db));
             }
             updateGlobalUI();
-            alert('تم حفظ إعدادات النظام وتحديث عنوان الموقع.');
+            alert('تم حفظ إعدادات النظام بنجاح.');
         }
 
         async function saveStoresSettings() {
@@ -971,14 +990,7 @@
 
         // --- محرك الفرز والقرعة التفاعلية الشفافة ---
         function renderAdminRaffleOptions() {
-            const select = document.getElementById('raffle-champion-select');
-            select.innerHTML = '<option value="all">أي بطل (عدم التصفية بالبطل)</option>';
-            
-            // حصر التوقعات الفريدة للبطل لفرزها
-            const champions = [...new Set(db.users.map(u => u.champion).filter(Boolean))];
-            champions.forEach(c => {
-                select.innerHTML += `<option value="${c}">${c}</option>`;
-            });
+            // تصفية أوتوماتيكية لم تعد بحاجة لقائمة خيارات يدوية هنا، الفرز يعتمد على "البطل الفعلي" المسجل في إعدادات النظام!
         }
 
         // احتساب نقاط المستخدم بناءً على التوقعات والنتائج الحقيقية
@@ -1006,18 +1018,25 @@
 
         // بدء السحب التفاعلي بالبث المباشر مع حركة القرعة
         function startLiveRaffle() {
-            const filterChampion = document.getElementById('raffle-champion-select').value;
+            const raffleMode = document.getElementById('raffle-mode-select').value;
             const pointsFilter = document.getElementById('raffle-points-filter').value;
+            const actualChampion = (db.settings.actualChampion || "").trim().toLowerCase();
+
+            // التحقق من تحديد البطل أولاً إذا كان نمط السحب يتطلبه لضمان الأمان البرمجي وعدم الخلط
+            if ((raffleMode === 'champion-weighted' || raffleMode === 'champion-equal') && !actualChampion) {
+                alert('⚠️ يرجى كتابة اسم "البطل الفعلي للبطولة" أولاً في حقل الإعدادات وتأكيده بالحفظ لتتمكن من تصفية المتوقعين بشكل صحيح.');
+                return;
+            }
 
             // 1. تصفية المستخدمين المؤهلين
             let eligibleUsers = [...db.users];
 
-            if(filterChampion !== 'all') {
-                eligibleUsers = eligibleUsers.filter(u => u.champion === filterChampion);
+            if(raffleMode === 'champion-weighted' || raffleMode === 'champion-equal') {
+                eligibleUsers = eligibleUsers.filter(u => (u.champion || "").trim().toLowerCase() === actualChampion);
             }
 
             if(eligibleUsers.length === 0) {
-                alert('لا يوجد مشتركين مطابقين لشروط التصفية والفرز الحالية.');
+                alert('🔍 لا يوجد مشتركين يطابقون شروط الفرز الحالية. تأكد من أن بعض المستخدمين توقعوا البطل المدخل.');
                 return;
             }
 
@@ -1026,16 +1045,19 @@
                 u.points = getUserPoints(u);
             });
 
-            // تصفية أصحاب أعلى نقاط إذا حددتها الإدارة
+            // تصفية أصحاب أعلى نقاط إذا حددتها الإدارة لفك التساوي (الـ Tie-breaker)
             if(pointsFilter === 'top') {
                 const maxPoints = Math.max(...eligibleUsers.map(u => u.points));
                 eligibleUsers = eligibleUsers.filter(u => u.points === maxPoints);
             }
 
-            // بناء سلة التذاكر (الفرص): كلما زادت نقاط المستخدم، زاد تكرار اسمه في السلة وحظه بالفرز!
+            // بناء سلة التذاكر (الفرص):
             let rafflePool = [];
             eligibleUsers.forEach(u => {
-                const tickets = Math.max(1, u.points);
+                let tickets = 1;
+                if (raffleMode === 'champion-weighted' || raffleMode === 'all-weighted') {
+                    tickets = Math.max(1, u.points); // تزداد الفرص بزيادة النقاط
+                }
                 for(let i = 0; i < tickets; i++) {
                     rafflePool.push(u);
                 }
